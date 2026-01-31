@@ -43,12 +43,80 @@ const pages = {
   },
   "/stopwatch": function () {
     return `
-      <div>
-        <h1>스톱워치 페이지</h1>
+      <div class="stopwatch">
+        <h1>스톱워치</h1>
+        <div class="time-display">
+          <span id="minutes">00</span>:<span id="seconds">00</span>:<span id="milliseconds">00</span>
+        </div>
+        <div class="controls">
+          <button id="startBtn">시작</button>
+          <button id="resetBtn">리셋</button>
+        </div>
       </div>
     `;
   },
 };
+
+// 스톱워치 상태
+let stopwatchInterval = null;
+let elapsedTime = 0;
+let isRunning = false;
+
+function initStopwatch() {
+  const startBtn = document.getElementById("startBtn");
+  const resetBtn = document.getElementById("resetBtn");
+
+  if (!startBtn) return;
+
+  updateDisplay();
+  updateStartButton();
+
+  startBtn.addEventListener("click", function () {
+    if (isRunning) {
+      clearInterval(stopwatchInterval);
+      isRunning = false;
+    } else {
+      const startTime = Date.now() - elapsedTime;
+      stopwatchInterval = setInterval(function () {
+        elapsedTime = Date.now() - startTime;
+        updateDisplay();
+      }, 10);
+      isRunning = true;
+    }
+    updateStartButton();
+  });
+
+  resetBtn.addEventListener("click", function () {
+    clearInterval(stopwatchInterval);
+    elapsedTime = 0;
+    isRunning = false;
+    updateDisplay();
+    updateStartButton();
+  });
+}
+
+function updateDisplay() {
+  const minutes = document.getElementById("minutes");
+  const seconds = document.getElementById("seconds");
+  const milliseconds = document.getElementById("milliseconds");
+
+  if (!minutes) return;
+
+  const mins = Math.floor(elapsedTime / 60000);
+  const secs = Math.floor((elapsedTime % 60000) / 1000);
+  const ms = Math.floor((elapsedTime % 1000) / 10);
+
+  minutes.textContent = String(mins).padStart(2, "0");
+  seconds.textContent = String(secs).padStart(2, "0");
+  milliseconds.textContent = String(ms).padStart(2, "0");
+}
+
+function updateStartButton() {
+  const startBtn = document.getElementById("startBtn");
+  if (startBtn) {
+    startBtn.textContent = isRunning ? "정지" : "시작";
+  }
+}
 
 // 라우터
 function router() {
@@ -64,6 +132,11 @@ function router() {
       link.classList.add("active");
     }
   });
+
+  // 페이지별 초기화
+  if (hash === "/stopwatch") {
+    initStopwatch();
+  }
 }
 
 // 이벤트 리스너
