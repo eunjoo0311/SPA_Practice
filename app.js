@@ -58,9 +58,54 @@ const pages = {
 };
 
 // 스톱워치 상태
-let stopwatchInterval = null;
+// let stopwatchInterval = null;
+// let elapsedTime = 0;
+// let isRunning = false;
+
+// function initStopwatch() {
+//   const startBtn = document.getElementById("startBtn");
+//   const resetBtn = document.getElementById("resetBtn");
+
+//   if (!startBtn) return;
+
+//   updateDisplay();
+//   updateStartButton();
+
+//   startBtn.addEventListener("click", function () {
+//     if (isRunning) {
+//       clearInterval(stopwatchInterval);
+//       isRunning = false;
+//     } else {
+//       const startTime = Date.now() - elapsedTime;
+//       stopwatchInterval = setInterval(function () {
+//         elapsedTime = Date.now() - startTime;
+//         updateDisplay();
+//       }, 10);
+//       isRunning = true;
+//     }
+//     updateStartButton();
+//   });
+
+//   resetBtn.addEventListener("click", function () {
+//     clearInterval(stopwatchInterval);
+//     elapsedTime = 0;
+//     isRunning = false;
+//     updateDisplay();
+//     updateStartButton();
+//   });
+// }
+
+// 스톱워치 상태
+let rafId = null;
 let elapsedTime = 0;
 let isRunning = false;
+let startTime = 0;
+
+function tick() {
+  elapsedTime = Date.now() - startTime;
+  updateDisplay();
+  rafId = requestAnimationFrame(tick);
+}
 
 function initStopwatch() {
   const startBtn = document.getElementById("startBtn");
@@ -73,21 +118,20 @@ function initStopwatch() {
 
   startBtn.addEventListener("click", function () {
     if (isRunning) {
-      clearInterval(stopwatchInterval);
+      cancelAnimationFrame(rafId);
+      rafId = null;
       isRunning = false;
     } else {
-      const startTime = Date.now() - elapsedTime;
-      stopwatchInterval = setInterval(function () {
-        elapsedTime = Date.now() - startTime;
-        updateDisplay();
-      }, 10);
+      startTime = Date.now() - elapsedTime;
+      rafId = requestAnimationFrame(tick);
       isRunning = true;
     }
     updateStartButton();
   });
 
   resetBtn.addEventListener("click", function () {
-    clearInterval(stopwatchInterval);
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
     elapsedTime = 0;
     isRunning = false;
     updateDisplay();
