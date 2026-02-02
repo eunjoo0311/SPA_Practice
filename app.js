@@ -1,6 +1,8 @@
 const app = document.querySelector("#app");
 
+// =========================
 // 페이지 컴포넌트들
+// =========================
 const pages = {
   "/": function () {
     return `
@@ -57,45 +59,52 @@ const pages = {
   },
 };
 
-// 스톱워치 상태
-// let stopwatchInterval = null;
-// let elapsedTime = 0;
-// let isRunning = false;
+/* =====================================================
+   VERSION 1 — setInterval 방식
+   ===================================================== */
+/*
+let stopwatchInterval = null;
+let elapsedTime = 0;
+let isRunning = false;
 
-// function initStopwatch() {
-//   const startBtn = document.getElementById("startBtn");
-//   const resetBtn = document.getElementById("resetBtn");
+function initStopwatch_interval() {
+  const startBtn = document.getElementById("startBtn");
+  const resetBtn = document.getElementById("resetBtn");
 
-//   if (!startBtn) return;
+  if (!startBtn) return;
 
-//   updateDisplay();
-//   updateStartButton();
+  updateDisplay();
+  updateStartButton();
 
-//   startBtn.addEventListener("click", function () {
-//     if (isRunning) {
-//       clearInterval(stopwatchInterval);
-//       isRunning = false;
-//     } else {
-//       const startTime = Date.now() - elapsedTime;
-//       stopwatchInterval = setInterval(function () {
-//         elapsedTime = Date.now() - startTime;
-//         updateDisplay();
-//       }, 10);
-//       isRunning = true;
-//     }
-//     updateStartButton();
-//   });
+  startBtn.addEventListener("click", function () {
+    if (isRunning) {
+      clearInterval(stopwatchInterval);
+      isRunning = false;
+    } else {
+      const startTime = Date.now() - elapsedTime;
+      stopwatchInterval = setInterval(function () {
+        elapsedTime = Date.now() - startTime;
+        updateDisplay();
+      }, 10);
+      isRunning = true;
+    }
+    updateStartButton();
+  });
 
-//   resetBtn.addEventListener("click", function () {
-//     clearInterval(stopwatchInterval);
-//     elapsedTime = 0;
-//     isRunning = false;
-//     updateDisplay();
-//     updateStartButton();
-//   });
-// }
+  resetBtn.addEventListener("click", function () {
+    clearInterval(stopwatchInterval);
+    elapsedTime = 0;
+    isRunning = false;
+    updateDisplay();
+    updateStartButton();
+  });
+}
+*/
 
-// 스톱워치 상태
+/* =====================================================
+   VERSION 2 — requestAnimationFrame 방식 
+   ===================================================== */
+/*
 let rafId = null;
 let elapsedTime = 0;
 let isRunning = false;
@@ -107,7 +116,7 @@ function tick() {
   rafId = requestAnimationFrame(tick);
 }
 
-function initStopwatch() {
+function initStopwatch_raf() {
   const startBtn = document.getElementById("startBtn");
   const resetBtn = document.getElementById("resetBtn");
 
@@ -138,13 +147,128 @@ function initStopwatch() {
     updateStartButton();
   });
 }
+*/
+
+/* =====================================================
+   VERSION 3 — Web Worker 방식 (현재 사용)
+   ===================================================== */
+
+// 메인 스레드 상태
+let elapsedTime = 0;
+let isRunning = false;
+
+// worker / UI raf
+let worker = null;
+let uiRafId = null;
+let dirty = false;
+
+function requestUiFlush() {
+  if (uiRafId) return;
+  uiRafId = requestAnimationFrame(() => {
+    uiRafId = null;
+    if (dirty) {
+      updateDisplay();
+      dirty = false;
+    }
+  });
+}
+
+function ensureWorker() {
+  if (worker) return worker;
+
+  worker = new Worker("./stopwatch.worker.js");
+
+  worker.onmessage = (e) => {
+    const msg = e.data;
+    if (!msg) return;
+
+    // 워커가 보내는 elapsedTime만 받는다
+    if (
+      msg.type === "TICK" ||
+      msg.type === "STATE" ||
+      msg.type === "STOPPED" ||
+      msg.type === "RESET"
+    ) {
+      if (typeof msg.elapsedTime === "number") {
+        elapsedTime = msg.elapsedTime;
+      }
+      if (typeof msg.running === "boolean") {
+        isRunning = msg.running;
+      }
+
+      dirty = true;
+      requestUiFlush();
+      updateStartButton();
+    }
+  };
+
+  worker.onerror = (err) => {
+    console.error("Worker error:", err);
+  };
+
+  return worker;
+}
+
+function destroyWorker() {
+  if (uiRafId) cancelAnimationFrame(uiRafId);
+  uiRafId = null;
+  dirty = false;
+
+  if (worker) {
+    worker.terminate();
+    worker = null;
+  }
+}
+
+function initStopwatch() {
+  const startBtn = document.getElementById("startBtn");
+  const resetBtn = document.getElementById("resetBtn");
+
+  if (!startBtn || !resetBtn) return;
+
+  ensureWorker();
+
+  // 페이지 진입 시 상태 동기화
+  worker.postMessage({ type: "GET" });
+
+  updateDisplay();
+  updateStartButton();
+
+  startBtn.addEventListener("click", function () {
+    if (!worker) return;
+
+    if (isRunning) {
+      worker.postMessage({ type: "STOP" });
+      isRunning = false;
+    } else {
+      worker.postMessage({ type: "START" });
+      isRunning = true;
+    }
+    updateStartButton();
+  });
+
+  resetBtn.addEventListener("click", function () {
+    if (!worker) return;
+
+    worker.postMessage({ type: "RESET" });
+    elapsedTime = 0;
+    isRunning = false;
+
+    updateDisplay();
+    updateStartButton();
+  });
+}
+
+/* =====================================================
+   공통 UI 함수
+   ===================================================== */
 
 function updateDisplay() {
   const minutes = document.getElementById("minutes");
   const seconds = document.getElementById("seconds");
   const milliseconds = document.getElementById("milliseconds");
 
-  if (!minutes) return;
+  if (!minutes || !seconds || !milliseconds) return;
 
   const mins = Math.floor(elapsedTime / 60000);
   const secs = Math.floor((elapsedTime % 60000) / 1000);
@@ -162,10 +286,20 @@ function updateStartButton() {
   }
 }
 
-// 라우터
+/* =====================================================
+   Router
+   ===================================================== */
+
 function router() {
   const hash = window.location.hash.slice(1) || "/";
   const page = pages[hash] || pages["/"];
+
+  // 스톱워치 페이지가 아니면 워커 종료(누수 방지)
+  if (hash !== "/stopwatch") {
+    destroyWorker();
+    elapsedTime = 0;
+    isRunning = false;
+  }
 
   app.innerHTML = page();
 
@@ -177,7 +311,6 @@ function router() {
     }
   });
 
-  // 페이지별 초기화
   if (hash === "/stopwatch") {
     initStopwatch();
   }
